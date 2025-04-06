@@ -1,6 +1,7 @@
 use csv::StringRecord;
 use sqlparser::ast::{
-    BinaryOperator, Expr, SetExpr, Statement, TableWithJoins, Value, ValueWithSpan,
+    BinaryOperator, Expr, ProjectionSelect, SelectItem, SetExpr, Statement, TableWithJoins, Value,
+    ValueWithSpan,
 };
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
@@ -61,11 +62,14 @@ fn evaluate_binary_op(left: Literal, op: &BinaryOperator, right: Literal) -> Opt
         (Literal::Bool(b1), BinaryOperator::And, Literal::Bool(b2)) => {
             Some(Literal::Bool(*b1 && *b2))
         }
-        (Literal::Bool(b1), BinaryOperator::Or, Literal::Bool(b2)) => Some(Literal::Bool(*b1 || *b2)),
+        (Literal::Bool(b1), BinaryOperator::Or, Literal::Bool(b2)) => {
+            Some(Literal::Bool(*b1 || *b2))
+        }
         (Literal::Bool(b1), BinaryOperator::Xor, Literal::Bool(b2)) => Some(Literal::Bool(b1 ^ b2)),
         _ => {
-            println!("{:?}",  (&left, op, &right));
-            todo!() },
+            println!("{:?}", (&left, op, &right));
+            todo!()
+        }
     }
 }
 
@@ -125,12 +129,17 @@ fn evaluate_query(query: &str) -> Vec<StringRecord> {
                 }
             }
         }
+        if let Some(Expr::Value(value)) = &query.limit {
+            if let Literal::Int(i) = convert_sql_value(&value) {
+                results.truncate(i as usize);
+            }
+        }
     }
     results
 }
 
 fn main() {
-    let query = "SELECT * FROM example.csv WHERE years + 1 > 2 OR animal = 'dog'";
+    let query = "SELECT * FROM example.csv WHERE years + 1 > 2 OR animal = 'dog' limit 1";
 
     let results = evaluate_query(query);
     for rec in results {

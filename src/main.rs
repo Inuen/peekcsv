@@ -1,6 +1,6 @@
 use csv::StringRecord;
 use sqlparser::ast::{
-    BinaryOperator, Expr, ProjectionSelect, SelectItem, SetExpr, Statement, TableWithJoins, Value,
+    BinaryOperator, Expr, SetExpr, Statement, TableWithJoins, Value,
     ValueWithSpan,
 };
 use sqlparser::dialect::GenericDialect;
@@ -19,13 +19,13 @@ struct CsvRow<'a> {
 }
 
 impl<'a> CsvRow<'a> {
-    fn get(&self, column: &str) -> Option<Literal> {
-        let idx = self.headers.iter().position(|col| col == column)?;
-        let val = self.row.get(idx)?;
+    fn get(&self, column: &str) -> Literal {
+        let idx = self.headers.iter().position(|col| col == column).unwrap();
+        let val = self.row.get(idx).unwrap();
         if let Ok(num) = val.parse::<i64>() {
-            Some(Literal::Int(num))
+            Literal::Int(num)
         } else {
-            Some(Literal::Str(val.to_string()))
+            Literal::Str(val.to_string())
             //     add bool datetime support
         }
     }
@@ -34,38 +34,30 @@ impl<'a> CsvRow<'a> {
 fn convert_sql_value(value: &ValueWithSpan) -> Literal {
     match &value.value {
         Value::Number(s, _) => Literal::Int(s.parse::<i64>().unwrap_or(0)),
-        Value::SingleQuotedString(s) => Literal::Str(s.clone()), // clone needed?
+        Value::SingleQuotedString(s) => Literal::Str(s.to_string()),
         Value::Boolean(b) => Literal::Bool(*b),
         _ => todo!(),
     }
 }
 
-fn evaluate_binary_op(left: Literal, op: &BinaryOperator, right: Literal) -> Option<Literal> {
+fn evaluate_binary_op(left: Literal, op: &BinaryOperator, right: Literal) -> Literal {
     match (&left, &op, &right) {
-        (Literal::Int(i1), BinaryOperator::Eq, Literal::Int(i2)) => Some(Literal::Bool(i1 == i2)),
-        (Literal::Bool(b1), BinaryOperator::Eq, Literal::Bool(b2)) => Some(Literal::Bool(b1 == b2)),
-        (Literal::Int(i1), BinaryOperator::Gt, Literal::Int(i2)) => Some(Literal::Bool(i1 > i2)),
-        (Literal::Int(i1), BinaryOperator::GtEq, Literal::Int(i2)) => Some(Literal::Bool(i1 >= i2)),
-        (Literal::Int(i1), BinaryOperator::Lt, Literal::Int(i2)) => Some(Literal::Bool(i1 < i2)),
-        (Literal::Int(i1), BinaryOperator::LtEq, Literal::Int(i2)) => Some(Literal::Bool(i1 <= i2)),
-        (Literal::Int(i1), BinaryOperator::Plus, Literal::Int(i2)) => Some(Literal::Int(i1 + i2)),
-        (Literal::Int(i1), BinaryOperator::Minus, Literal::Int(i2)) => Some(Literal::Int(i1 - i2)),
-        (Literal::Int(i1), BinaryOperator::Multiply, Literal::Int(i2)) => {
-            Some(Literal::Int(i1 * i2))
-        }
-        (Literal::Int(i1), BinaryOperator::Divide, Literal::Int(i2)) => Some(Literal::Int(i1 / i2)),
-        (Literal::Int(i1), BinaryOperator::Modulo, Literal::Int(i2)) => Some(Literal::Int(i1 % i2)),
-        (Literal::Str(s1), BinaryOperator::Eq, Literal::Str(s2)) => Some(Literal::Bool(s1 == s2)),
-        (Literal::Str(s1), BinaryOperator::NotEq, Literal::Str(s2)) => {
-            Some(Literal::Bool(s1 != s2))
-        }
-        (Literal::Bool(b1), BinaryOperator::And, Literal::Bool(b2)) => {
-            Some(Literal::Bool(*b1 && *b2))
-        }
-        (Literal::Bool(b1), BinaryOperator::Or, Literal::Bool(b2)) => {
-            Some(Literal::Bool(*b1 || *b2))
-        }
-        (Literal::Bool(b1), BinaryOperator::Xor, Literal::Bool(b2)) => Some(Literal::Bool(b1 ^ b2)),
+        (Literal::Int(i1), BinaryOperator::Eq, Literal::Int(i2)) => Literal::Bool(i1 == i2),
+        (Literal::Bool(b1), BinaryOperator::Eq, Literal::Bool(b2)) => Literal::Bool(b1 == b2),
+        (Literal::Int(i1), BinaryOperator::Gt, Literal::Int(i2)) => Literal::Bool(i1 > i2),
+        (Literal::Int(i1), BinaryOperator::GtEq, Literal::Int(i2)) => Literal::Bool(i1 >= i2),
+        (Literal::Int(i1), BinaryOperator::Lt, Literal::Int(i2)) => Literal::Bool(i1 < i2),
+        (Literal::Int(i1), BinaryOperator::LtEq, Literal::Int(i2)) => Literal::Bool(i1 <= i2),
+        (Literal::Int(i1), BinaryOperator::Plus, Literal::Int(i2)) => Literal::Int(i1 + i2),
+        (Literal::Int(i1), BinaryOperator::Minus, Literal::Int(i2)) => Literal::Int(i1 - i2),
+        (Literal::Int(i1), BinaryOperator::Multiply, Literal::Int(i2)) => Literal::Int(i1 * i2),
+        (Literal::Int(i1), BinaryOperator::Divide, Literal::Int(i2)) => Literal::Int(i1 / i2),
+        (Literal::Int(i1), BinaryOperator::Modulo, Literal::Int(i2)) => Literal::Int(i1 % i2),
+        (Literal::Str(s1), BinaryOperator::Eq, Literal::Str(s2)) => Literal::Bool(s1 == s2),
+        (Literal::Str(s1), BinaryOperator::NotEq, Literal::Str(s2)) => Literal::Bool(s1 != s2),
+        (Literal::Bool(b1), BinaryOperator::And, Literal::Bool(b2)) => Literal::Bool(*b1 && *b2),
+        (Literal::Bool(b1), BinaryOperator::Or, Literal::Bool(b2)) => Literal::Bool(*b1 || *b2),
+        (Literal::Bool(b1), BinaryOperator::Xor, Literal::Bool(b2)) => Literal::Bool(b1 ^ b2),
         _ => {
             println!("{:?}", (&left, op, &right));
             todo!()
@@ -73,13 +65,13 @@ fn evaluate_binary_op(left: Literal, op: &BinaryOperator, right: Literal) -> Opt
     }
 }
 
-fn evaluate_expr(expr: &Expr, row: &CsvRow) -> Option<Literal> {
+fn evaluate_expr(expr: &Expr, row: &CsvRow) -> Literal {
     match expr {
-        Expr::Value(v) => Some(convert_sql_value(v)),
+        Expr::Value(v) => convert_sql_value(v),
         Expr::Identifier(ident) => row.get(ident.value.as_str()),
         Expr::BinaryOp { left, op, right } => {
-            let l = evaluate_expr(left, row)?;
-            let r = evaluate_expr(right, row)?;
+            let l = evaluate_expr(left, row);
+            let r = evaluate_expr(right, row);
             evaluate_binary_op(l, op, r)
         }
         Expr::Like {
@@ -119,7 +111,7 @@ fn evaluate_query(query: &str) -> Vec<StringRecord> {
                         row: &rec,
                     };
                     let result = evaluate_expr(expr, &csv_row);
-                    if let Some(Literal::Bool(true)) = result {
+                    if let Literal::Bool(true) = result {
                         results.push(rec);
                     }
                 }
